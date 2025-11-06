@@ -45,9 +45,18 @@ class Database:
                 appid INTEGER PRIMARY KEY,
                 role_id INTEGER NOT NULL,
                 game_name TEXT NOT NULL,
+                owner_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add owner_count column if it doesn't exist (migration)
+        try:
+            cur.execute('ALTER TABLE game_roles ADD COLUMN owner_count INTEGER DEFAULT 0')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
         
         # Track last scan time
         cur.execute('''
@@ -144,14 +153,29 @@ class Database:
         row = cur.fetchone()
         return row['playtime_minutes'] if row else 0
     
-    def create_game_role(self, appid: int, role_id: int, game_name: str):
+    def create_game_role(self, appid: int, role_id: int, game_name: str, owner_count: int = 0):
         """Record that a role was created for a game"""
         cur = self.conn.cursor()
         cur.execute('''
-            INSERT OR REPLACE INTO game_roles (appid, role_id, game_name)
-            VALUES (?, ?, ?)
-        ''', (appid, role_id, game_name))
+            INSERT OR REPLACE INTO game_roles (appid, role_id, game_name, owner_count)
+            VALUES (?, ?, ?, ?)
+        ''', (appid, role_id, game_name, owner_count))
         self.conn.commit()
+    
+    def update_game_owner_count(self, appid: int, owner_count: int):
+        """Update the owner count for a game"""
+        cur = self.conn.cursor()
+        cur.execute('''
+            UPDATE game_roles SET owner_count = ? WHERE appid = ?
+        ''', (owner_count, appid))
+        self.conn.commit()
+    
+    def get_game_owner_count(self, appid: int) -> int:
+        """Get the owner count for a game"""
+        cur = self.conn.cursor()
+        cur.execute('SELECT owner_count FROM game_roles WHERE appid = ?', (appid,))
+        row = cur.fetchone()
+        return row['owner_count'] if row else 0
     
     def get_game_role(self, appid: int) -> Optional[int]:
         """Get role ID for a game, if it exists"""
@@ -224,6 +248,33 @@ class Database:
         cur.execute('SELECT game_name FROM game_roles WHERE appid = ?', (appid,))
         row = cur.fetchone()
         return row['game_name'] if row else None
+    
+    def get_top_games_by_owners(self, limit: int = None) -> List[Dict]:
+        """
+        Get games ordered by number of owners (descending).
+        Returns list of dicts with appid, game_name, role_id, owner_count
+        """
+        cur = self.conn.cursor()
+        if limit:
+            cur.execute('''
+                SELECT appid, game_name, role_id, owner_count 
+                FROM game_roles 
+                ORDER BY owner_count DESC, game_name ASC 
+                LIMIT ?
+            ''', (limit,))
+        else:
+            cur.execute('''
+                SELECT appid, game_name, role_id, owner_count 
+                FROM game_roles 
+                ORDER BY owner_count DESC, game_name ASC
+            ''')
+        return [dict(row) for row in cur.fetchall()]
+    
+    def get_all_games_owner_counts(self) -> Dict[int, int]:
+        """Get owner counts for all games. Returns {appid: owner_count}"""
+        cur = self.conn.cursor()
+        cur.execute('SELECT appid, owner_count FROM game_roles')
+        return {row['appid']: row['owner_count'] for row in cur.fetchall()}
 
 # Global database instance
 db = Database()

@@ -29,9 +29,12 @@ python main.py
   - Multiplayer or Cooperative
   - Played for at least 60 minutes (configurable)
   - Owned by at least 2 server members (configurable)
+- **Owner Tracking**: Tracks how many users own each game
+- **Top Games**: View most popular games with `!topgames` command
 - **Scheduled Scans**:
   - **Full Scan**: Runs once per night (3 AM by default) to scan all linked users
   - **Daily Scan**: Runs once per day to check for new games
+- **Blacklist System**: Prevent specific games from getting roles
 
 ## Setup
 
@@ -111,20 +114,37 @@ Or using uv directly:
 uv run python main.py
 ```
 
-## Usage
+## Commands
 
-### Linking Your Steam Account
+### User Commands
 
-Users can link their Steam account using:
-```
-!link https://steamcommunity.com/id/yourname
-!link https://steamcommunity.com/profiles/76561198012345678
-!link 76561198012345678
-```
+All users can use these commands:
+
+- **`!info`** - Display available commands and bot information
+- **`!link <steam_url_or_id>`** - Link your Steam account to your Discord profile
+  - Examples:
+    - `!link https://steamcommunity.com/id/yourname`
+    - `!link https://steamcommunity.com/profiles/76561198012345678`
+    - `!link 76561198012345678`
 
 ### Admin Commands
 
-- `!rescan` - Manually trigger a full rescan of all linked users (Admin only)
+Server administrators have access to additional commands:
+
+- **`!admininfo`** - Display all admin commands
+- **`!ping`** - Check if the bot is operational (shows latency)
+- **`!rescan`** - Manually trigger a full rescan of all linked users
+- **`!topgames [limit]`** - Show the top N most common games by number of owners
+  - Default limit: 10
+  - Example: `!topgames 20`
+- **`!linkfor @user <steam_url_or_id>`** - Link a Steam account for another user
+  - Example: `!linkfor @JohnDoe https://steamcommunity.com/id/johndoe`
+- **`!removegame <appid>`** - Remove a game from the database and delete its role
+  - Example: `!removegame 730`
+- **`!blacklist <appid>`** - Toggle blacklist status for a game
+  - First use blacklists the game (prevents role creation)
+  - Second use unblacklists the game
+  - Example: `!blacklist 730`
 
 ## How It Works
 
@@ -145,8 +165,9 @@ Users can link their Steam account using:
 The bot uses SQLite to store:
 - Discord user to Steam ID mappings
 - User game libraries with playtime
-- Game role mappings
+- Game role mappings with owner counts
 - Scan history
+- Blacklisted games
 
 Data is stored in `data/bot_data.db` and cached game metadata in `data/app_cache.json`.
 
@@ -164,4 +185,6 @@ All configuration is done through environment variables in the `.env` file:
 - The bot respects Steam API rate limits
 - Roles are automatically created and assigned, but can be manually edited/deleted
 - The bot tracks which games have roles to avoid duplicates
+- Use `!topgames` to see which games are most popular among your server members
+- Blacklisted games will not have roles created even if they meet all criteria
 

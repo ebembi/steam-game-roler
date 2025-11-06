@@ -17,13 +17,17 @@ venv/
 ENV/
 env/
 
-# Database
+# Database and runtime data
 data/bot_data.db
 data/bot_data.db-journal
+data/bot_data.db-shm
+data/bot_data.db-wal
 
-# Cache
+# Cache and logs
 data/app_cache.json
+data/*.json
 *.log
+*.log.*
 
 # IDE
 .vscode/

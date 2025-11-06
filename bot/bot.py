@@ -195,6 +195,12 @@ async def admininfo_command(ctx):
         inline=False
     )
     embed.add_field(
+        name=f"{settings.COMMAND_PREFIX}topgames",
+        value="Show the top N most common games by number of owners.\n"
+              f"Usage: `{settings.COMMAND_PREFIX}topgames [limit]`",
+        inline=False
+    )
+    embed.add_field(
         name=f"{settings.COMMAND_PREFIX}admininfo",
         value="Display this admin help message.",
         inline=False
@@ -375,6 +381,49 @@ async def rescan_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         logger.warning(f"Unexpected CheckFailure for rescan: {error}")
 
+@bot.command(name='topgames')
+async def topgames_command(ctx, limit: int = 10):
+    """
+    Show the top N most common games by number of owners.
+    Usage: !topgames [limit] (default: 10)
+    """
+    try:
+        if limit < 1 or limit > 100:
+            await safe_send(ctx, "❌ Limit must be between 1 and 100.")
+            return
+        
+        top_games = database.db.get_top_games_by_owners(limit)
+        
+        if not top_games:
+            await safe_send(ctx, "No games found in the database.")
+            return
+        
+        embed = discord.Embed(
+            title=f"🏆 Top {limit} Most Common Games",
+            description=f"Games ordered by number of owners",
+            color=discord.Color.gold()
+        )
+        
+        for i, game in enumerate(top_games, 1):
+            embed.add_field(
+                name=f"{i}. {game['game_name']}",
+                value=f"👥 {game['owner_count']} owners • App ID: {game['appid']}",
+                inline=False
+            )
+        
+        await safe_send(ctx, embed=embed)
+    except Exception as e:
+        logger.error(f"Error showing top games: {e}", exc_info=True)
+        await safe_send(ctx, f"❌ Error retrieving top games: {str(e)}")
+
+@topgames_command.error
+async def topgames_error(ctx, error):
+    if isinstance(error, commands.CheckFailure):
+        logger.warning(f"Unexpected CheckFailure for topgames: {error}")
+    elif isinstance(error, commands.BadArgument):
+        await safe_send(ctx, f"❌ Invalid limit. Please provide a number.\n"
+                      f"Usage: `{settings.COMMAND_PREFIX}topgames [limit]`")
+
 async def perform_full_scan(guild: discord.Guild):
     """
     Perform a full scan of all linked users:
@@ -466,6 +515,8 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
                     # Role was deleted, need to create new one
                     existing_role_id = None
             
+            owner_count = len(discord_ids)
+            
             if not role:
                 # Create new role
                 role = await guild.create_role(
@@ -473,8 +524,12 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
                     mentionable=True,
                     reason=f"Auto-created role for game: {game_name}"
                 )
-                database.db.create_game_role(appid, role.id, game_name)
-                logger.info(f"Created role '{game_name}' (ID: {role.id}) for appid {appid}")
+                database.db.create_game_role(appid, role.id, game_name, owner_count)
+                logger.info(f"Created role '{game_name}' (ID: {role.id}) for appid {appid} with {owner_count} owners")
+            else:
+                # Update owner count for existing role
+                database.db.update_game_owner_count(appid, owner_count)
+                logger.debug(f"Updated owner count for '{game_name}' to {owner_count}")
             
             # Assign role to all users who own the game
             for discord_id in discord_ids:
