@@ -179,6 +179,16 @@ All configuration is done through environment variables in the `.env` file:
 - `TIMEZONE`: Timezone for scheduled scans (default: Europe/London)
 - `COMMAND_PREFIX`: Command prefix for bot commands (default: !)
 
+## Testing
+
+Run the test suite to verify functionality:
+
+```bash
+pytest
+```
+
+See `tests/README.md` for more details on the test suite.
+
 ## Notes
 
 - Steam profiles must be public for the bot to access game libraries
