@@ -2,6 +2,25 @@
 
 A Discord bot that automatically creates roles based on Steam game ownership. Users can link their Steam accounts, and the bot will scan for multiplayer/cooperative games and assign roles accordingly.
 
+## Quick Start
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Setup virtual environment and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# Run the bot
+python main.py
+```
+
 ## Features
 
 - **Link Steam Accounts**: Users can link their Steam profile using `!link <steam_url_or_id>`
@@ -19,18 +38,32 @@ A Discord bot that automatically creates roles based on Steam game ownership. Us
 ### Prerequisites
 
 - Python 3.8 or higher
+- [uv](https://github.com/astral-sh/uv) package manager
 - Discord Bot Token
 - Steam API Key
 
 ### Installation
 
 1. Clone this repository
-2. Install dependencies:
+
+2. Install uv (if not already installed):
    ```bash
-   pip install -r requirements.txt
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-3. Create a `.env` file in the root directory with the following variables:
+3. Create a virtual environment and install dependencies:
+   ```bash
+   uv venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv pip install -e .
+   ```
+
+4. Create a `.env` file in the root directory (copy from `.env.example`):
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Then edit `.env` with your values:
    ```
    DISCORD_TOKEN=your_discord_bot_token_here
    STEAM_API_KEY=your_steam_api_key_here
@@ -40,19 +73,20 @@ A Discord bot that automatically creates roles based on Steam game ownership. Us
    PLAYTIME_MINUTES=60 (optional, default: 60)
    MIN_PLAYERS=2 (optional, default: 2)
    COMMAND_PREFIX=! (optional, default: !)
+   ADMIN_ROLE_ID=0 (optional, set to role ID for admin restrictions)
    ```
 
-4. Get your Discord Bot Token:
+5. Get your Discord Bot Token:
    - Go to https://discord.com/developers/applications
    - Create a new application or select an existing one
    - Go to the "Bot" section
    - Copy the token
 
-5. Get your Steam API Key:
+6. Get your Steam API Key:
    - Go to https://steamcommunity.com/dev/apikey
    - Register for an API key
 
-6. Get your Guild ID:
+7. Get your Guild ID:
    - Enable Developer Mode in Discord
    - Right-click your server → Copy Server ID
 
@@ -65,8 +99,16 @@ The bot needs the following permissions:
 
 ### Running the Bot
 
+Make sure your virtual environment is activated, then:
+
 ```bash
 python main.py
+```
+
+Or using uv directly:
+
+```bash
+uv run python main.py
 ```
 
 ## Usage
