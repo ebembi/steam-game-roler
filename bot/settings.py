@@ -1,0 +1,24 @@
+﻿import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Get the project root directory (parent of bot/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Load .env file from project root
+load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
+
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+STEAM_API_KEY = os.getenv('STEAM_API_KEY')
+GUILD_ID = int(os.getenv('GUILD_ID', '0'))
+ADMIN_CHANNEL_ID = int(os.getenv('ADMIN_CHANNEL_ID', '0'))
+TIMEZONE = os.getenv('TIMEZONE', 'Europe/London')
+
+# thresholds
+PLAYTIME_MINUTES = int(os.getenv('PLAYTIME_MINUTES', '60'))
+MIN_PLAYERS = int(os.getenv('MIN_PLAYERS', '2'))
+
+# prefix (used for text commands like !info)
+COMMAND_PREFIX = os.getenv('COMMAND_PREFIX', '!')
+
+# Admin role ID (set to 0 to disable, or provide the role ID)
+ADMIN_ROLE_ID = int(os.getenv('ADMIN_ROLE_ID', '0'))

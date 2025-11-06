@@ -1,2 +1,125 @@
-# steam-game-roler
-A bot for discord that takes everyones Steam games, ranks the top 100 games played by most people sorted by gametime.
+# Steam Discord Bot
+
+A Discord bot that automatically creates roles based on Steam game ownership. Users can link their Steam accounts, and the bot will scan for multiplayer/cooperative games and assign roles accordingly.
+
+## Features
+
+- **Link Steam Accounts**: Users can link their Steam profile using `!link <steam_url_or_id>`
+- **Automatic Role Creation**: Bot creates roles for games that meet the criteria
+- **Smart Filtering**: Only creates roles for games that are:
+  - Multiplayer or Cooperative
+  - Played for at least 60 minutes (configurable)
+  - Owned by at least 2 server members (configurable)
+- **Scheduled Scans**:
+  - **Full Scan**: Runs once per night (3 AM by default) to scan all linked users
+  - **Daily Scan**: Runs once per day to check for new games
+
+## Setup
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Discord Bot Token
+- Steam API Key
+
+### Installation
+
+1. Clone this repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Create a `.env` file in the root directory with the following variables:
+   ```
+   DISCORD_TOKEN=your_discord_bot_token_here
+   STEAM_API_KEY=your_steam_api_key_here
+   GUILD_ID=your_guild_id_here
+   ADMIN_CHANNEL_ID=your_admin_channel_id_here (optional)
+   TIMEZONE=Europe/London (optional, default: Europe/London)
+   PLAYTIME_MINUTES=60 (optional, default: 60)
+   MIN_PLAYERS=2 (optional, default: 2)
+   COMMAND_PREFIX=! (optional, default: !)
+   ```
+
+4. Get your Discord Bot Token:
+   - Go to https://discord.com/developers/applications
+   - Create a new application or select an existing one
+   - Go to the "Bot" section
+   - Copy the token
+
+5. Get your Steam API Key:
+   - Go to https://steamcommunity.com/dev/apikey
+   - Register for an API key
+
+6. Get your Guild ID:
+   - Enable Developer Mode in Discord
+   - Right-click your server → Copy Server ID
+
+### Bot Permissions
+
+The bot needs the following permissions:
+- Manage Roles
+- Send Messages
+- Read Message History
+
+### Running the Bot
+
+```bash
+python main.py
+```
+
+## Usage
+
+### Linking Your Steam Account
+
+Users can link their Steam account using:
+```
+!link https://steamcommunity.com/id/yourname
+!link https://steamcommunity.com/profiles/76561198012345678
+!link 76561198012345678
+```
+
+### Admin Commands
+
+- `!rescan` - Manually trigger a full rescan of all linked users (Admin only)
+
+## How It Works
+
+1. **Initial Setup**: Users link their Steam accounts using the `!link` command
+2. **Full Scan** (Nightly at 3 AM):
+   - Scans all linked Steam accounts
+   - Filters games by multiplayer/cooperative, playtime, and ownership
+   - Creates roles for qualifying games
+   - Assigns roles to users who own those games
+3. **Daily Scan** (Once per day):
+   - Checks for new games in linked libraries
+   - Applies the same filters
+   - Creates roles for new qualifying games
+   - Assigns roles to users
+
+## Data Storage
+
+The bot uses SQLite to store:
+- Discord user to Steam ID mappings
+- User game libraries with playtime
+- Game role mappings
+- Scan history
+
+Data is stored in `data/bot_data.db` and cached game metadata in `data/app_cache.json`.
+
+## Configuration
+
+All configuration is done through environment variables in the `.env` file:
+- `PLAYTIME_MINUTES`: Minimum playtime required (default: 60)
+- `MIN_PLAYERS`: Minimum number of server members who must own a game (default: 2)
+- `TIMEZONE`: Timezone for scheduled scans (default: Europe/London)
+- `COMMAND_PREFIX`: Command prefix for bot commands (default: !)
+
+## Notes
+
+- Steam profiles must be public for the bot to access game libraries
+- The bot respects Steam API rate limits
+- Roles are automatically created and assigned, but can be manually edited/deleted
+- The bot tracks which games have roles to avoid duplicates
+
