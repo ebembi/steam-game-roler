@@ -400,14 +400,15 @@ async def topgames_command(ctx, limit: int = 10):
         
         embed = discord.Embed(
             title=f"🏆 Top {limit} Most Common Games",
-            description=f"Games ordered by number of owners",
+            description=f"Games ordered by owners, then by average playtime rank",
             color=discord.Color.gold()
         )
         
         for i, game in enumerate(top_games, 1):
+            rank_display = f"📊 Avg Playtime Rank: {game['avg_playtime_rank']:.1f}" if game['avg_playtime_rank'] < 999 else ""
             embed.add_field(
                 name=f"{i}. {game['game_name']}",
-                value=f"👥 {game['owner_count']} owners • App ID: {game['appid']}",
+                value=f"👥 {game['owner_count']} owners • {rank_display}\nApp ID: {game['appid']}",
                 inline=False
             )
         
@@ -516,6 +517,7 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
                     existing_role_id = None
             
             owner_count = len(discord_ids)
+            avg_playtime_rank = database.db.calculate_avg_playtime_rank(appid, discord_ids)
             
             if not role:
                 # Create new role
@@ -524,12 +526,12 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
                     mentionable=True,
                     reason=f"Auto-created role for game: {game_name}"
                 )
-                database.db.create_game_role(appid, role.id, game_name, owner_count)
-                logger.info(f"Created role '{game_name}' (ID: {role.id}) for appid {appid} with {owner_count} owners")
+                database.db.create_game_role(appid, role.id, game_name, owner_count, avg_playtime_rank)
+                logger.info(f"Created role '{game_name}' (ID: {role.id}) for appid {appid} with {owner_count} owners, avg rank {avg_playtime_rank:.1f}")
             else:
-                # Update owner count for existing role
-                database.db.update_game_owner_count(appid, owner_count)
-                logger.debug(f"Updated owner count for '{game_name}' to {owner_count}")
+                # Update stats for existing role
+                database.db.update_game_stats(appid, owner_count, avg_playtime_rank)
+                logger.debug(f"Updated stats for '{game_name}': {owner_count} owners, avg rank {avg_playtime_rank:.1f}")
             
             # Assign role to all users who own the game
             for discord_id in discord_ids:

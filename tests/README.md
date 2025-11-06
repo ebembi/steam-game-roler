@@ -24,8 +24,10 @@ pytest tests/test_database.py::test_user_linking
 Tests core data storage and retrieval:
 - User-Steam account linking
 - Game ownership and playtime tracking
-- Role creation with owner counts
-- Top games queries
+- Role creation with owner counts and avg playtime ranks
+- Average playtime rank calculation across users
+- Top games queries (sorted by owners, then by playtime rank)
+- Updating game stats changes ordering
 - Blacklist system
 - Multi-user scenarios
 
@@ -51,5 +53,5 @@ Tests focus on **end-to-end functionality** rather than implementation details. 
 2. Filtering logic produces expected results
 3. Core features work after refactoring
 
-Tests are **not pedantic** - they test behavior, not implementation.
+Tests are **not pedantic** - they test behavior, not implementation. If we need to be testing the private API, then maybe we should rethink the code structure.
 

@@ -156,3 +156,112 @@ def test_scan_history(temp_db):
     # Retrieve scan time
     last_scan = temp_db.get_last_scan_time("full_scan")
     assert last_scan is not None
+
+
+def test_avg_playtime_rank_calculation(temp_db):
+    """Test calculating average playtime rank for a game"""
+    # Setup users with different playtime patterns
+    user1 = 111111
+    user2 = 222222
+    user3 = 333333
+
+    temp_db.link_user(user1, "76561198000000001")
+    temp_db.link_user(user2, "76561198000000002")
+    temp_db.link_user(user3, "76561198000000003")
+
+    # User 1: CS2 is #1 (highest playtime)
+    temp_db.update_user_games(
+        user1,
+        [
+            {"appid": 730, "playtime_forever": 200},  # Rank 1
+            {"appid": 570, "playtime_forever": 150},  # Rank 2
+            {"appid": 440, "playtime_forever": 100},  # Rank 3
+        ],
+    )
+
+    # User 2: CS2 is #2
+    temp_db.update_user_games(
+        user2,
+        [
+            {"appid": 570, "playtime_forever": 300},  # Rank 1
+            {"appid": 730, "playtime_forever": 200},  # Rank 2
+            {"appid": 440, "playtime_forever": 50},  # Rank 3
+        ],
+    )
+
+    # User 3: CS2 is #3
+    temp_db.update_user_games(
+        user3,
+        [
+            {"appid": 570, "playtime_forever": 400},  # Rank 1
+            {"appid": 440, "playtime_forever": 250},  # Rank 2
+            {"appid": 730, "playtime_forever": 100},  # Rank 3
+        ],
+    )
+
+    # Calculate avg rank for CS2 (730): (1 + 2 + 3) / 3 = 2.0
+    avg_rank = temp_db.calculate_avg_playtime_rank(730, [user1, user2, user3])
+    assert avg_rank == 2.0
+
+    # Calculate avg rank for Dota (570): (2 + 1 + 1) / 3 = 1.33...
+    avg_rank = temp_db.calculate_avg_playtime_rank(570, [user1, user2, user3])
+    assert abs(avg_rank - 1.333) < 0.01
+
+
+def test_game_role_with_avg_rank(temp_db):
+    """Test creating and retrieving games with different avg playtime ranks"""
+    # Create multiple games with different ranks
+    temp_db.create_game_role(730, 111, "CS2", 5, 2.5)
+    temp_db.create_game_role(570, 222, "Dota 2", 5, 1.0)
+    temp_db.create_game_role(440, 333, "TF2", 5, 10.0)
+
+    # Get top games - should be sorted by rank
+    top_games = temp_db.get_top_games_by_owners()
+    
+    # Verify behavior: lower rank comes first when owner counts are equal
+    assert top_games[0]["appid"] == 570  # Dota with rank 1.0
+    assert top_games[1]["appid"] == 730  # CS2 with rank 2.5
+    assert top_games[2]["appid"] == 440  # TF2 with rank 10.0
+
+
+def test_update_game_stats(temp_db):
+    """Test that updating stats changes top games ordering"""
+    # Create games with initial stats
+    temp_db.create_game_role(730, 123, "CS2", 5, 10.0)
+    temp_db.create_game_role(570, 456, "Dota 2", 5, 5.0)
+
+    # Initially Dota should rank higher (better rank)
+    top_games = temp_db.get_top_games_by_owners(2)
+    assert top_games[0]["appid"] == 570
+
+    # Update CS2 to have better rank
+    temp_db.update_game_stats(730, 5, 1.0)
+
+    # Now CS2 should rank higher
+    top_games = temp_db.get_top_games_by_owners(2)
+    assert top_games[0]["appid"] == 730
+
+
+def test_top_games_sorted_by_avg_rank(temp_db):
+    """Test that games with same owner count are sorted by avg playtime rank"""
+    # Create games with same owner count but different avg ranks
+    temp_db.create_game_role(730, 111, "CS2", 5, 2.0)  # Good rank
+    temp_db.create_game_role(570, 222, "Dota 2", 5, 5.0)  # Worse rank
+    temp_db.create_game_role(440, 333, "TF2", 5, 1.5)  # Best rank
+    temp_db.create_game_role(620, 444, "Portal 2", 3, 1.0)  # Fewer owners
+
+    # Get top games
+    top_games = temp_db.get_top_games_by_owners(10)
+
+    # Should be sorted by owner_count DESC, then avg_playtime_rank ASC
+    # So: 5 owners (TF2 rank 1.5, CS2 rank 2.0, Dota rank 5.0), then 3 owners (Portal 2)
+    assert top_games[0]["appid"] == 440  # TF2 with rank 1.5
+    assert top_games[1]["appid"] == 730  # CS2 with rank 2.0
+    assert top_games[2]["appid"] == 570  # Dota with rank 5.0
+    assert top_games[3]["appid"] == 620  # Portal 2 with 3 owners
+
+
+def test_avg_rank_empty_owners(temp_db):
+    """Test calculating avg rank with no owners returns high value"""
+    avg_rank = temp_db.calculate_avg_playtime_rank(999, [])
+    assert avg_rank == 999.0
