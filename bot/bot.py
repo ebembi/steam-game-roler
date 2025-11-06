@@ -408,7 +408,7 @@ async def topgames_command(ctx, limit: int = 10):
             rank_display = f"📊 Avg Playtime Rank: {game['avg_playtime_rank']:.1f}" if game['avg_playtime_rank'] < 999 else ""
             embed.add_field(
                 name=f"{i}. {game['game_name']}",
-                value=f"👥 {game['owner_count']} owners • {rank_display}\nApp ID: {game['appid']}",
+                value=f"👥 {game['owner_count']} owners • {rank_display}",
                 inline=False
             )
         
