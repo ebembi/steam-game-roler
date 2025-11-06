@@ -11,7 +11,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Setup virtual environment and install dependencies
 uv venv
 source .venv/bin/activate
-uv pip install -e .
+uv sync
 
 # Configure environment
 cp .env.example .env
@@ -55,7 +55,7 @@ python main.py
    ```bash
    uv venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   uv pip install -e .
+   uv sync
    ```
 
 4. Create a `.env` file in the root directory (copy from `.env.example`):
