@@ -128,25 +128,63 @@ async def link_command(ctx, *, steam_input: str = None):
 @bot.command(name='info')
 async def info_command(ctx):
     """
-    Display available commands for all users.
+    Display bot information and available commands.
     """
+    # Get bot stats
+    linked_users = len(database.db.get_all_links())
+    total_roles = len(database.db.get_all_game_roles())
+    
     embed = discord.Embed(
-        title="📋 Available Commands",
-        description="Commands available to all users:",
+        title="🎮 Steam Game Role Bot",
+        description=(
+            "I automatically create Discord roles based on Steam game ownership!\n\n"
+            "**How it works:**\n"
+            "• Link your Steam account\n"
+            "• I scan your library for multiplayer/co-op games\n"
+            "• Roles are created for popular games (2+ owners, 60+ min playtime)\n"
+            "• Find gaming buddies by mentioning roles!"
+        ),
         color=discord.Color.blue()
     )
+    
+    # Bot Stats
     embed.add_field(
-        name=f"{settings.COMMAND_PREFIX}link",
-        value="Link your Steam profile to your Discord account.\n"
-              f"Usage: `{settings.COMMAND_PREFIX}link <steam_profile_url_or_id>`\n"
-              f"Example: `{settings.COMMAND_PREFIX}link https://steamcommunity.com/id/yourname`",
+        name="📊 Current Stats",
+        value=f"👥 **{linked_users}** linked users\n🎯 **{total_roles}** game roles created",
         inline=False
     )
+    
+    # Available Commands
     embed.add_field(
-        name=f"{settings.COMMAND_PREFIX}info",
-        value="Display this help message.",
+        name="📋 Commands",
+        value=(
+            f"**`{settings.COMMAND_PREFIX}link <steam_url>`**\n"
+            f"Link your Steam account\n"
+            f"Example: `{settings.COMMAND_PREFIX}link https://steamcommunity.com/id/yourname`\n\n"
+            f"**`{settings.COMMAND_PREFIX}topgames [limit]`**\n"
+            f"View the most popular games (default: 10)\n\n"
+            f"**`{settings.COMMAND_PREFIX}info`**\n"
+            f"Show this help message\n\n"
+            f"**`{settings.COMMAND_PREFIX}admininfo`**\n"
+            f"Admin commands (admins only)"
+        ),
         inline=False
     )
+    
+    # Tips
+    embed.add_field(
+        name="💡 Tips",
+        value=(
+            "• Your Steam profile must be **public**\n"
+            "• Games need 60+ min playtime to qualify\n"
+            "• Only multiplayer/co-op games get roles\n"
+            "• Use `@role` mentions to find gaming buddies!"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Use {settings.COMMAND_PREFIX}link to get started!")
+    
     await safe_send(ctx, embed=embed)
 
 def has_admin_role():

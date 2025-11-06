@@ -120,12 +120,18 @@ uv run python main.py
 
 All users can use these commands:
 
-- **`!info`** - Display available commands and bot information
+- **`!info`** - Display bot information, stats, and available commands
+  - Shows linked users, total game roles
+  - Lists all available commands
+  - Provides helpful tips
 - **`!link <steam_url_or_id>`** - Link your Steam account to your Discord profile
   - Examples:
     - `!link https://steamcommunity.com/id/yourname`
     - `!link https://steamcommunity.com/profiles/76561198012345678`
     - `!link 76561198012345678`
+- **`!topgames [limit]`** - Show the top N most common games by number of owners
+  - Default limit: 10
+  - Example: `!topgames 20`
 
 ### Admin Commands
 
