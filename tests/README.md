@@ -30,6 +30,8 @@ Tests core data storage and retrieval:
 - Updating game stats changes ordering
 - Blacklist system
 - Multi-user scenarios
+- Cleanup operations (removing all or selective games)
+- Game role mapping retrieval
 
 ### Game Filtering (`test_game_filter.py`)
 Tests business logic for which games get roles:

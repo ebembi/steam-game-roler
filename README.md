@@ -151,6 +151,11 @@ Server administrators have access to additional commands:
   - First use blacklists the game (prevents role creation)
   - Second use unblacklists the game
   - Example: `!blacklist 730`
+- **`!cleanup [force]`** - Remove all bot-created game roles from the server
+  - `!cleanup` - Remove roles from database (normal mode)
+  - `!cleanup force` - Remove all roles with bot suffix (disaster recovery when DB is reset)
+  - Requires confirmation
+  - Example: `!cleanup force`
 
 ## How It Works
 

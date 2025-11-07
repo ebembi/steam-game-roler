@@ -265,3 +265,64 @@ def test_avg_rank_empty_owners(temp_db):
     """Test calculating avg rank with no owners returns high value"""
     avg_rank = temp_db.calculate_avg_playtime_rank(999, [])
     assert avg_rank == 999.0
+
+
+def test_cleanup_removes_all_games(temp_db):
+    """Test that cleanup operation removes all game data"""
+    # Create multiple games
+    temp_db.create_game_role(730, 111, "CS2", 5, 2.0)
+    temp_db.create_game_role(570, 222, "Dota 2", 5, 1.0)
+    temp_db.create_game_role(440, 333, "TF2", 3, 3.0)
+
+    # Link users and add game ownership
+    temp_db.link_user(111111, "76561198000000001")
+    temp_db.update_user_games(111111, [{"appid": 730, "playtime_forever": 100}])
+
+    # Verify games exist
+    all_roles = temp_db.get_all_game_roles()
+    assert len(all_roles) == 3
+
+    # Cleanup: remove all games
+    for appid in [730, 570, 440]:
+        temp_db.remove_game(appid)
+
+    # Verify all games removed
+    all_roles_after = temp_db.get_all_game_roles()
+    assert len(all_roles_after) == 0
+
+    # Verify user link still exists (not affected by cleanup)
+    steam_id = temp_db.get_steam_id(111111)
+    assert steam_id == "76561198000000001"
+
+
+def test_cleanup_handles_partial_removal(temp_db):
+    """Test that cleanup can selectively remove games"""
+    # Create multiple games
+    temp_db.create_game_role(730, 111, "CS2", 5, 2.0)
+    temp_db.create_game_role(570, 222, "Dota 2", 5, 1.0)
+    temp_db.create_game_role(440, 333, "TF2", 3, 3.0)
+
+    # Remove only one game
+    temp_db.remove_game(730)
+
+    # Verify only CS2 removed
+    all_roles = temp_db.get_all_game_roles()
+    assert len(all_roles) == 2
+    assert 730 not in all_roles
+    assert 570 in all_roles
+    assert 440 in all_roles
+
+
+def test_get_all_game_roles_returns_mapping(temp_db):
+    """Test getting all game roles returns correct appid to role_id mapping"""
+    # Create games
+    temp_db.create_game_role(730, 111, "CS2", 5, 2.0)
+    temp_db.create_game_role(570, 222, "Dota 2", 3, 1.5)
+
+    # Get all roles
+    all_roles = temp_db.get_all_game_roles()
+
+    # Verify mapping
+    assert len(all_roles) == 2
+    assert all_roles[730] == 111
+    assert all_roles[570] == 222
