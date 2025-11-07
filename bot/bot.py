@@ -128,25 +128,63 @@ async def link_command(ctx, *, steam_input: str = None):
 @bot.command(name='info')
 async def info_command(ctx):
     """
-    Display available commands for all users.
+    Display bot information and available commands.
     """
+    # Get bot stats
+    linked_users = len(database.db.get_all_links())
+    total_roles = len(database.db.get_all_game_roles())
+    
     embed = discord.Embed(
-        title="📋 Available Commands",
-        description="Commands available to all users:",
+        title="🎮 Steam Game Role Bot",
+        description=(
+            "I automatically create Discord roles based on Steam game ownership!\n\n"
+            "**How it works:**\n"
+            "• Link your Steam account\n"
+            "• I scan your library for multiplayer/co-op games\n"
+            "• Roles are created for popular games (2+ owners, 60+ min playtime)\n"
+            "• Find gaming buddies by mentioning roles!"
+        ),
         color=discord.Color.blue()
     )
+    
+    # Bot Stats
     embed.add_field(
-        name=f"{settings.COMMAND_PREFIX}link",
-        value="Link your Steam profile to your Discord account.\n"
-              f"Usage: `{settings.COMMAND_PREFIX}link <steam_profile_url_or_id>`\n"
-              f"Example: `{settings.COMMAND_PREFIX}link https://steamcommunity.com/id/yourname`",
+        name="📊 Current Stats",
+        value=f"👥 **{linked_users}** linked users\n🎯 **{total_roles}** game roles created",
         inline=False
     )
+    
+    # Available Commands
     embed.add_field(
-        name=f"{settings.COMMAND_PREFIX}info",
-        value="Display this help message.",
+        name="📋 Commands",
+        value=(
+            f"**`{settings.COMMAND_PREFIX}link <steam_url>`**\n"
+            f"Link your Steam account\n"
+            f"Example: `{settings.COMMAND_PREFIX}link https://steamcommunity.com/id/yourname`\n\n"
+            f"**`{settings.COMMAND_PREFIX}topgames [limit]`**\n"
+            f"View the most popular games (default: 10)\n\n"
+            f"**`{settings.COMMAND_PREFIX}info`**\n"
+            f"Show this help message\n\n"
+            f"**`{settings.COMMAND_PREFIX}admininfo`**\n"
+            f"Admin commands (admins only)"
+        ),
         inline=False
     )
+    
+    # Tips
+    embed.add_field(
+        name="💡 Tips",
+        value=(
+            "• Your Steam profile must be **public**\n"
+            "• Games need 60+ min playtime to qualify\n"
+            "• Only multiplayer/co-op games get roles\n"
+            "• Use `@role` mentions to find gaming buddies!"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Use {settings.COMMAND_PREFIX}link to get started!")
+    
     await safe_send(ctx, embed=embed)
 
 def has_admin_role():
@@ -191,7 +229,23 @@ async def admininfo_command(ctx):
     )
     embed.add_field(
         name=f"{settings.COMMAND_PREFIX}rescan",
-        value="Manually trigger a full rescan of all linked users.",
+        value="Manually trigger a full rescan of all linked users.\n"
+              f"Usage: `{settings.COMMAND_PREFIX}rescan [max_roles]`\n"
+              f"Creates roles for top N games (default: {settings.MAX_ROLES})",
+        inline=False
+    )
+    embed.add_field(
+        name=f"{settings.COMMAND_PREFIX}topgames",
+        value="Show the top N most common games by number of owners.\n"
+              f"Usage: `{settings.COMMAND_PREFIX}topgames [limit]`",
+        inline=False
+    )
+    embed.add_field(
+        name=f"{settings.COMMAND_PREFIX}cleanup",
+        value="Remove all bot-created game roles from the server.\n"
+              f"Usage: `{settings.COMMAND_PREFIX}cleanup [force]`\n"
+              f"`{settings.COMMAND_PREFIX}cleanup` - Remove roles from database\n"
+              f"`{settings.COMMAND_PREFIX}cleanup force` - Remove all roles with suffix `{settings.ROLE_SUFFIX}` (disaster recovery)",
         inline=False
     )
     embed.add_field(
@@ -357,14 +411,22 @@ async def blacklist_error(ctx, error):
                       f"Usage: `{settings.COMMAND_PREFIX}blacklist <appid>`")
 
 @bot.command(name='rescan')
-async def rescan_command(ctx):
+async def rescan_command(ctx, max_roles: int = None):
     """
     Manually trigger a full rescan of all linked users.
     Admin only.
+    Usage: !rescan [max_roles]
     """
-    await safe_send(ctx, "🔄 Starting full rescan of all linked users...")
+    if max_roles is None:
+        max_roles = settings.MAX_ROLES
+    
+    if max_roles < 1:
+        await safe_send(ctx, "❌ max_roles must be at least 1")
+        return
+    
+    await safe_send(ctx, f"🔄 Starting full rescan (creating roles for top {max_roles} games)...")
     try:
-        await perform_full_scan(ctx.guild)
+        await perform_full_scan(ctx.guild, max_roles=max_roles)
         await safe_send(ctx, "✅ Full rescan completed!")
     except Exception as e:
         logger.error(f"Error during rescan: {e}", exc_info=True)
@@ -374,17 +436,310 @@ async def rescan_command(ctx):
 async def rescan_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         logger.warning(f"Unexpected CheckFailure for rescan: {error}")
+    elif isinstance(error, commands.BadArgument):
+        await safe_send(ctx, f"❌ Invalid max_roles. Please provide a number.\n"
+                      f"Usage: `{settings.COMMAND_PREFIX}rescan [max_roles]`")
 
-async def perform_full_scan(guild: discord.Guild):
+@bot.command(name='topgames')
+async def topgames_command(ctx, limit: int = 10):
+    """
+    Show the top N most common games by number of owners.
+    Usage: !topgames [limit] (default: 10)
+    """
+    try:
+        if limit < 1 or limit > 100:
+            await safe_send(ctx, "❌ Limit must be between 1 and 100.")
+            return
+        
+        top_games = database.db.get_top_games_by_owners(limit)
+        
+        if not top_games:
+            await safe_send(ctx, "No games found in the database.")
+            return
+        
+        embed = discord.Embed(
+            title=f"🏆 Top {limit} Most Common Games",
+            description=f"Games ordered by owners, then by average playtime rank",
+            color=discord.Color.gold()
+        )
+        
+        for i, game in enumerate(top_games, 1):
+            rank_display = f"📊 Avg Playtime Rank: {game['avg_playtime_rank']:.1f}" if game['avg_playtime_rank'] < 999 else ""
+            embed.add_field(
+                name=f"{i}. {game['game_name']}",
+                value=f"👥 {game['owner_count']} owners • {rank_display}",
+                inline=False
+            )
+        
+        await safe_send(ctx, embed=embed)
+    except Exception as e:
+        logger.error(f"Error showing top games: {e}", exc_info=True)
+        await safe_send(ctx, f"❌ Error retrieving top games: {str(e)}")
+
+@topgames_command.error
+async def topgames_error(ctx, error):
+    if isinstance(error, commands.CheckFailure):
+        logger.warning(f"Unexpected CheckFailure for topgames: {error}")
+    elif isinstance(error, commands.BadArgument):
+        await safe_send(ctx, f"❌ Invalid limit. Please provide a number.\n"
+                      f"Usage: `{settings.COMMAND_PREFIX}topgames [limit]`")
+
+@bot.command(name='cleanup')
+async def cleanup_command(ctx, mode: str = "normal"):
+    """
+    Remove all bot-created game roles from the server.
+    Admin only. Requires confirmation.
+    Usage: !cleanup [force]
+    
+    - !cleanup       - Remove roles from database
+    - !cleanup force - Remove all roles with suffix (even if DB is reset)
+    """
+    try:
+        force_mode = mode.lower() == "force"
+        
+        if force_mode:
+            # Force mode: scan all Discord roles for the suffix
+            guild = ctx.guild
+            bot_roles = [role for role in guild.roles if role.name.endswith(settings.ROLE_SUFFIX)]
+            
+            if not bot_roles:
+                await safe_send(ctx, f"✅ No roles found with suffix `{settings.ROLE_SUFFIX}`. Nothing to clean up!")
+                return
+            
+            # Show summary for force mode
+            embed = discord.Embed(
+                title="🧹 Force Cleanup Summary",
+                description=f"Found **{len(bot_roles)}** roles with suffix `{settings.ROLE_SUFFIX}`",
+                color=discord.Color.red()
+            )
+            
+            embed.add_field(
+                name="⚠️ Force Mode",
+                value="This will delete **all roles** with the bot suffix, regardless of database state.\n"
+                      "Use this when the database has been reset.",
+                inline=False
+            )
+            
+            # Show sample of roles that will be deleted
+            sample_roles = [role.name for role in bot_roles[:10]]
+            if len(bot_roles) > 10:
+                sample_roles.append(f"... and {len(bot_roles) - 10} more")
+            
+            embed.add_field(
+                name="📋 Roles to Delete",
+                value="\n".join(f"• {name}" for name in sample_roles),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔸 To Confirm",
+                value=f"Type `{settings.COMMAND_PREFIX}cleanup force confirm` within 30 seconds to proceed.",
+                inline=False
+            )
+            
+            await safe_send(ctx, embed=embed)
+            
+            # Wait for confirmation with "force confirm"
+            def check(m):
+                return (m.author == ctx.author and 
+                        m.channel == ctx.channel and 
+                        m.content.lower() == f"{settings.COMMAND_PREFIX}cleanup force confirm")
+            
+            try:
+                await bot.wait_for('message', check=check, timeout=30.0)
+            except asyncio.TimeoutError:
+                await safe_send(ctx, "❌ Force cleanup cancelled (timed out).")
+                return
+            
+            # Perform force cleanup
+            await safe_send(ctx, f"🧹 Force deleting {len(bot_roles)} roles...")
+            
+            deleted_count = 0
+            failed_count = 0
+            
+            for role in bot_roles:
+                try:
+                    role_name = role.name
+                    await role.delete(reason=f"Force cleanup by {ctx.author.name}")
+                    deleted_count += 1
+                    logger.info(f"Force deleted role '{role_name}' via cleanup command")
+                except discord.Forbidden:
+                    logger.error(f"No permission to delete role {role.name}")
+                    failed_count += 1
+                except Exception as e:
+                    logger.error(f"Error deleting role {role.name}: {e}")
+                    failed_count += 1
+            
+            # Clean up database (all game roles, since we don't know which ones were deleted)
+            all_db_roles = database.db.get_all_game_roles()
+            for appid in all_db_roles.keys():
+                database.db.remove_game(appid)
+            
+            # Send results
+            result_embed = discord.Embed(
+                title="✅ Force Cleanup Complete",
+                color=discord.Color.green()
+            )
+            result_embed.add_field(
+                name="Results",
+                value=f"🗑️ Deleted: **{deleted_count}** roles\n"
+                      f"🧹 Cleaned: **{len(all_db_roles)}** database entries\n"
+                      f"❌ Failed: **{failed_count}** roles",
+                inline=False
+            )
+            
+            if failed_count > 0:
+                result_embed.add_field(
+                    name="⚠️ Note",
+                    value="Some roles could not be deleted (missing permissions). Check bot role position.",
+                    inline=False
+                )
+            
+            await safe_send(ctx, embed=result_embed)
+            return
+        
+        # Normal mode: use database
+        all_game_roles = database.db.get_all_game_roles()
+        
+        if not all_game_roles:
+            await safe_send(ctx, "✅ No game roles found in database. Nothing to clean up!")
+            return
+        
+        # Check which roles still exist in Discord
+        guild = ctx.guild
+        existing_roles = []
+        missing_roles = []
+        
+        for appid, role_id in all_game_roles.items():
+            role = guild.get_role(role_id)
+            if role:
+                existing_roles.append((appid, role))
+            else:
+                missing_roles.append((appid, role_id))
+        
+        total_count = len(existing_roles) + len(missing_roles)
+        
+        # Send summary
+        embed = discord.Embed(
+            title="🧹 Cleanup Summary",
+            description=f"Found **{total_count}** game roles in database",
+            color=discord.Color.orange()
+        )
+        
+        embed.add_field(
+            name="📊 Status",
+            value=f"✅ **{len(existing_roles)}** roles exist in Discord\n"
+                  f"⚠️ **{len(missing_roles)}** roles already deleted",
+            inline=False
+        )
+        
+        if existing_roles:
+            embed.add_field(
+                name="⚠️ Warning",
+                value=f"This will **delete {len(existing_roles)} roles** from Discord and clean up the database.\n"
+                      f"This action **cannot be undone**.",
+                inline=False
+            )
+            embed.add_field(
+                name="🔸 To Confirm",
+                value=f"Type `{settings.COMMAND_PREFIX}cleanup confirm` within 30 seconds to proceed.",
+                inline=False
+            )
+        
+        await safe_send(ctx, embed=embed)
+        
+        # If nothing to delete, just clean up database
+        if not existing_roles:
+            if missing_roles:
+                for appid, _ in missing_roles:
+                    database.db.remove_game(appid)
+                await safe_send(ctx, f"✅ Cleaned up {len(missing_roles)} orphaned database entries.")
+            return
+        
+        # Wait for confirmation
+        def check(m):
+            return (m.author == ctx.author and 
+                    m.channel == ctx.channel and 
+                    m.content.lower() == f"{settings.COMMAND_PREFIX}cleanup confirm")
+        
+        try:
+            await bot.wait_for('message', check=check, timeout=30.0)
+        except asyncio.TimeoutError:
+            await safe_send(ctx, "❌ Cleanup cancelled (timed out).")
+            return
+        
+        # Perform cleanup
+        await safe_send(ctx, f"🧹 Deleting {len(existing_roles)} roles...")
+        
+        deleted_count = 0
+        failed_count = 0
+        
+        for appid, role in existing_roles:
+            try:
+                game_name = database.db.get_game_name(appid)
+                await role.delete(reason=f"Cleanup command by {ctx.author.name}")
+                database.db.remove_game(appid)
+                deleted_count += 1
+                logger.info(f"Deleted role '{role.name}' (appid: {appid}) via cleanup command")
+            except discord.Forbidden:
+                logger.error(f"No permission to delete role {role.name}")
+                failed_count += 1
+            except Exception as e:
+                logger.error(f"Error deleting role {role.name}: {e}")
+                failed_count += 1
+        
+        # Clean up missing roles from database
+        for appid, _ in missing_roles:
+            database.db.remove_game(appid)
+        
+        # Send results
+        result_embed = discord.Embed(
+            title="✅ Cleanup Complete",
+            color=discord.Color.green()
+        )
+        result_embed.add_field(
+            name="Results",
+            value=f"🗑️ Deleted: **{deleted_count}** roles\n"
+                  f"🧹 Cleaned: **{len(missing_roles)}** orphaned entries\n"
+                  f"❌ Failed: **{failed_count}** roles",
+            inline=False
+        )
+        
+        if failed_count > 0:
+            result_embed.add_field(
+                name="⚠️ Note",
+                value="Some roles could not be deleted (missing permissions). Check bot role position.",
+                inline=False
+            )
+        
+        await safe_send(ctx, embed=result_embed)
+        
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}", exc_info=True)
+        await safe_send(ctx, f"❌ Error during cleanup: {str(e)}")
+
+@cleanup_command.error
+async def cleanup_error(ctx, error):
+    if isinstance(error, commands.CheckFailure):
+        logger.warning(f"Unexpected CheckFailure for cleanup: {error}")
+
+async def perform_full_scan(guild: discord.Guild, max_roles: int = None):
     """
     Perform a full scan of all linked users:
     1. Get all linked users
     2. Fetch their game libraries
     3. Filter games (multiplayer/coop, 60+ min, 2+ players)
-    4. Create roles for qualifying games
+    4. Create roles for top N qualifying games
     5. Assign roles to users
+    
+    Args:
+        guild: Discord guild to scan
+        max_roles: Maximum number of game roles to create (defaults to settings.MAX_ROLES)
     """
-    logger.info("Starting full scan...")
+    if max_roles is None:
+        max_roles = settings.MAX_ROLES
+    
+    logger.info(f"Starting full scan (max_roles={max_roles})...")
     
     # Get all linked users
     links = database.db.get_all_links()
@@ -436,8 +791,26 @@ async def perform_full_scan(guild: discord.Guild):
     
     logger.info(f"After filtering: {len(filtered_games)} games qualify")
     
-    # Create roles and assign them
-    await create_and_assign_roles(guild, filtered_games)
+    # Limit to top N games by owner count
+    if filtered_games:
+        # Sort by owner count (descending)
+        sorted_games = sorted(
+            filtered_games.items(),
+            key=lambda x: len(x[1]),  # x[1] is the list of discord_ids
+            reverse=True
+        )
+        
+        # Take top N
+        top_n_games = dict(sorted_games[:max_roles])
+        
+        logger.info(f"Limiting to top {len(top_n_games)} games by owner count (max_roles={max_roles})")
+        if len(sorted_games) > max_roles:
+            logger.info(f"Skipping {len(sorted_games) - max_roles} less popular games")
+        
+        # Create roles and assign them (only for top N)
+        await create_and_assign_roles(guild, top_n_games)
+    else:
+        logger.info("No games to create roles for")
     
     # Update scan time
     database.db.update_scan_time('full_scan')
@@ -454,6 +827,7 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
             # Get game name
             meta = await store_api.get_app_meta(appid)
             game_name = meta.get('name') or f"Game {appid}"
+            role_name = game_name + settings.ROLE_SUFFIX
             
             # Check if role already exists
             existing_role_id = database.db.get_game_role(appid)
@@ -466,15 +840,23 @@ async def create_and_assign_roles(guild: discord.Guild, games_by_appid: Dict[int
                     # Role was deleted, need to create new one
                     existing_role_id = None
             
+            owner_count = len(discord_ids)
+            avg_playtime_rank = database.db.calculate_avg_playtime_rank(appid, discord_ids)
+            
             if not role:
-                # Create new role
+                # Create new role with suffix and color
                 role = await guild.create_role(
-                    name=game_name,
+                    name=role_name,
+                    color=discord.Color(settings.ROLE_COLOR),
                     mentionable=True,
                     reason=f"Auto-created role for game: {game_name}"
                 )
-                database.db.create_game_role(appid, role.id, game_name)
-                logger.info(f"Created role '{game_name}' (ID: {role.id}) for appid {appid}")
+                database.db.create_game_role(appid, role.id, game_name, owner_count, avg_playtime_rank)
+                logger.info(f"Created role '{role_name}' (ID: {role.id}) for appid {appid} with {owner_count} owners, avg rank {avg_playtime_rank:.1f}")
+            else:
+                # Update stats for existing role
+                database.db.update_game_stats(appid, owner_count, avg_playtime_rank)
+                logger.debug(f"Updated stats for '{game_name}': {owner_count} owners, avg rank {avg_playtime_rank:.1f}")
             
             # Assign role to all users who own the game
             for discord_id in discord_ids:
@@ -512,9 +894,6 @@ async def perform_daily_scan(guild: discord.Guild):
     if not links:
         logger.info("No linked users found")
         return
-    
-    # Get existing games that already have roles (to track what's new)
-    existing_game_roles = set(database.db.get_all_game_roles().keys())
     
     # Track new games by appid
     new_games_by_appid = {}  # {appid: [discord_ids]}

@@ -45,9 +45,27 @@ class Database:
                 appid INTEGER PRIMARY KEY,
                 role_id INTEGER NOT NULL,
                 game_name TEXT NOT NULL,
+                owner_count INTEGER DEFAULT 0,
+                avg_playtime_rank REAL DEFAULT 999.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add owner_count column if it doesn't exist (migration)
+        try:
+            cur.execute('ALTER TABLE game_roles ADD COLUMN owner_count INTEGER DEFAULT 0')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+        
+        # Add avg_playtime_rank column if it doesn't exist (migration)
+        try:
+            cur.execute('ALTER TABLE game_roles ADD COLUMN avg_playtime_rank REAL DEFAULT 999.0')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
         
         # Track last scan time
         cur.execute('''
@@ -144,14 +162,37 @@ class Database:
         row = cur.fetchone()
         return row['playtime_minutes'] if row else 0
     
-    def create_game_role(self, appid: int, role_id: int, game_name: str):
+    def create_game_role(self, appid: int, role_id: int, game_name: str, owner_count: int = 0, avg_playtime_rank: float = 999.0):
         """Record that a role was created for a game"""
         cur = self.conn.cursor()
         cur.execute('''
-            INSERT OR REPLACE INTO game_roles (appid, role_id, game_name)
-            VALUES (?, ?, ?)
-        ''', (appid, role_id, game_name))
+            INSERT OR REPLACE INTO game_roles (appid, role_id, game_name, owner_count, avg_playtime_rank)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (appid, role_id, game_name, owner_count, avg_playtime_rank))
         self.conn.commit()
+    
+    def update_game_owner_count(self, appid: int, owner_count: int):
+        """Update the owner count for a game"""
+        cur = self.conn.cursor()
+        cur.execute('''
+            UPDATE game_roles SET owner_count = ? WHERE appid = ?
+        ''', (owner_count, appid))
+        self.conn.commit()
+    
+    def update_game_stats(self, appid: int, owner_count: int, avg_playtime_rank: float):
+        """Update the owner count and avg playtime rank for a game"""
+        cur = self.conn.cursor()
+        cur.execute('''
+            UPDATE game_roles SET owner_count = ?, avg_playtime_rank = ? WHERE appid = ?
+        ''', (owner_count, avg_playtime_rank, appid))
+        self.conn.commit()
+    
+    def get_game_owner_count(self, appid: int) -> int:
+        """Get the owner count for a game"""
+        cur = self.conn.cursor()
+        cur.execute('SELECT owner_count FROM game_roles WHERE appid = ?', (appid,))
+        row = cur.fetchone()
+        return row['owner_count'] if row else 0
     
     def get_game_role(self, appid: int) -> Optional[int]:
         """Get role ID for a game, if it exists"""
@@ -224,6 +265,65 @@ class Database:
         cur.execute('SELECT game_name FROM game_roles WHERE appid = ?', (appid,))
         row = cur.fetchone()
         return row['game_name'] if row else None
+    
+    def calculate_avg_playtime_rank(self, appid: int, discord_ids: List[int]) -> float:
+        """
+        Calculate the average playtime rank for a game across its owners.
+        Lower rank = more played (rank 1 = most played game).
+        """
+        if not discord_ids:
+            return 999.0
+        
+        cur = self.conn.cursor()
+        ranks = []
+        
+        for discord_id in discord_ids:
+            # Get all games for this user, ordered by playtime DESC
+            cur.execute('''
+                SELECT appid FROM user_games
+                WHERE discord_id = ?
+                ORDER BY playtime_minutes DESC, appid ASC
+            ''', (discord_id,))
+            
+            user_games = [row['appid'] for row in cur.fetchall()]
+            
+            # Find the rank of this game (1-indexed)
+            try:
+                rank = user_games.index(appid) + 1
+                ranks.append(rank)
+            except ValueError:
+                # Game not found in user's library (shouldn't happen)
+                ranks.append(999)
+        
+        # Return average rank
+        return sum(ranks) / len(ranks) if ranks else 999.0
+    
+    def get_top_games_by_owners(self, limit: int = None) -> List[Dict]:
+        """
+        Get games ordered by number of owners (descending), then by avg playtime rank (ascending).
+        Returns list of dicts with appid, game_name, role_id, owner_count, avg_playtime_rank
+        """
+        cur = self.conn.cursor()
+        if limit:
+            cur.execute('''
+                SELECT appid, game_name, role_id, owner_count, avg_playtime_rank 
+                FROM game_roles 
+                ORDER BY owner_count DESC, avg_playtime_rank ASC, game_name ASC 
+                LIMIT ?
+            ''', (limit,))
+        else:
+            cur.execute('''
+                SELECT appid, game_name, role_id, owner_count, avg_playtime_rank 
+                FROM game_roles 
+                ORDER BY owner_count DESC, avg_playtime_rank ASC, game_name ASC
+            ''')
+        return [dict(row) for row in cur.fetchall()]
+    
+    def get_all_games_owner_counts(self) -> Dict[int, int]:
+        """Get owner counts for all games. Returns {appid: owner_count}"""
+        cur = self.conn.cursor()
+        cur.execute('SELECT appid, owner_count FROM game_roles')
+        return {row['appid']: row['owner_count'] for row in cur.fetchall()}
 
 # Global database instance
 db = Database()
