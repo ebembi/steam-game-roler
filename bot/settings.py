@@ -16,6 +16,7 @@ TIMEZONE = os.getenv('TIMEZONE', 'Europe/London')
 # thresholds
 PLAYTIME_MINUTES = int(os.getenv('PLAYTIME_MINUTES', '60'))
 MIN_PLAYERS = int(os.getenv('MIN_PLAYERS', '2'))
+MAX_ROLES = int(os.getenv('MAX_ROLES', '10'))  # Maximum number of game roles to create during full scans
 
 # prefix (used for text commands like !info)
 COMMAND_PREFIX = os.getenv('COMMAND_PREFIX', '!')

@@ -229,7 +229,9 @@ async def admininfo_command(ctx):
     )
     embed.add_field(
         name=f"{settings.COMMAND_PREFIX}rescan",
-        value="Manually trigger a full rescan of all linked users.",
+        value="Manually trigger a full rescan of all linked users.\n"
+              f"Usage: `{settings.COMMAND_PREFIX}rescan [max_roles]`\n"
+              f"Creates roles for top N games (default: {settings.MAX_ROLES})",
         inline=False
     )
     embed.add_field(
@@ -409,14 +411,22 @@ async def blacklist_error(ctx, error):
                       f"Usage: `{settings.COMMAND_PREFIX}blacklist <appid>`")
 
 @bot.command(name='rescan')
-async def rescan_command(ctx):
+async def rescan_command(ctx, max_roles: int = None):
     """
     Manually trigger a full rescan of all linked users.
     Admin only.
+    Usage: !rescan [max_roles]
     """
-    await safe_send(ctx, "🔄 Starting full rescan of all linked users...")
+    if max_roles is None:
+        max_roles = settings.MAX_ROLES
+    
+    if max_roles < 1:
+        await safe_send(ctx, "❌ max_roles must be at least 1")
+        return
+    
+    await safe_send(ctx, f"🔄 Starting full rescan (creating roles for top {max_roles} games)...")
     try:
-        await perform_full_scan(ctx.guild)
+        await perform_full_scan(ctx.guild, max_roles=max_roles)
         await safe_send(ctx, "✅ Full rescan completed!")
     except Exception as e:
         logger.error(f"Error during rescan: {e}", exc_info=True)
@@ -426,6 +436,9 @@ async def rescan_command(ctx):
 async def rescan_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         logger.warning(f"Unexpected CheckFailure for rescan: {error}")
+    elif isinstance(error, commands.BadArgument):
+        await safe_send(ctx, f"❌ Invalid max_roles. Please provide a number.\n"
+                      f"Usage: `{settings.COMMAND_PREFIX}rescan [max_roles]`")
 
 @bot.command(name='topgames')
 async def topgames_command(ctx, limit: int = 10):
@@ -710,16 +723,23 @@ async def cleanup_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         logger.warning(f"Unexpected CheckFailure for cleanup: {error}")
 
-async def perform_full_scan(guild: discord.Guild):
+async def perform_full_scan(guild: discord.Guild, max_roles: int = None):
     """
     Perform a full scan of all linked users:
     1. Get all linked users
     2. Fetch their game libraries
     3. Filter games (multiplayer/coop, 60+ min, 2+ players)
-    4. Create roles for qualifying games
+    4. Create roles for top N qualifying games
     5. Assign roles to users
+    
+    Args:
+        guild: Discord guild to scan
+        max_roles: Maximum number of game roles to create (defaults to settings.MAX_ROLES)
     """
-    logger.info("Starting full scan...")
+    if max_roles is None:
+        max_roles = settings.MAX_ROLES
+    
+    logger.info(f"Starting full scan (max_roles={max_roles})...")
     
     # Get all linked users
     links = database.db.get_all_links()
@@ -771,8 +791,26 @@ async def perform_full_scan(guild: discord.Guild):
     
     logger.info(f"After filtering: {len(filtered_games)} games qualify")
     
-    # Create roles and assign them
-    await create_and_assign_roles(guild, filtered_games)
+    # Limit to top N games by owner count
+    if filtered_games:
+        # Sort by owner count (descending)
+        sorted_games = sorted(
+            filtered_games.items(),
+            key=lambda x: len(x[1]),  # x[1] is the list of discord_ids
+            reverse=True
+        )
+        
+        # Take top N
+        top_n_games = dict(sorted_games[:max_roles])
+        
+        logger.info(f"Limiting to top {len(top_n_games)} games by owner count (max_roles={max_roles})")
+        if len(sorted_games) > max_roles:
+            logger.info(f"Skipping {len(sorted_games) - max_roles} less popular games")
+        
+        # Create roles and assign them (only for top N)
+        await create_and_assign_roles(guild, top_n_games)
+    else:
+        logger.info("No games to create roles for")
     
     # Update scan time
     database.db.update_scan_time('full_scan')
@@ -856,9 +894,6 @@ async def perform_daily_scan(guild: discord.Guild):
     if not links:
         logger.info("No linked users found")
         return
-    
-    # Get existing games that already have roles (to track what's new)
-    existing_game_roles = set(database.db.get_all_game_roles().keys())
     
     # Track new games by appid
     new_games_by_appid = {}  # {appid: [discord_ids]}

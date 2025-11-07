@@ -24,7 +24,7 @@ python main.py
 ## Features
 
 - **Link Steam Accounts**: Users can link their Steam profile using `!link <steam_url_or_id>`
-- **Automatic Role Creation**: Bot creates roles for games that meet the criteria
+- **Automatic Role Creation**: Bot creates roles for the top N games by owner count (configurable)
 - **Smart Filtering**: Only creates roles for games that are:
   - Multiplayer or Cooperative
   - Played for at least 60 minutes (configurable)
@@ -32,8 +32,8 @@ python main.py
 - **Owner Tracking**: Tracks how many users own each game
 - **Top Games**: View most popular games with `!topgames` command
 - **Scheduled Scans**:
-  - **Full Scan**: Runs once per night (3 AM by default) to scan all linked users
-  - **Daily Scan**: Runs once per day to check for new games
+  - **Full Scan**: Runs once per night (3 AM by default) to create roles for top N games (default: 10)
+  - **Daily Scan**: Runs once per day to check for new qualifying games
 - **Blacklist System**: Prevent specific games from getting roles
 
 ## Setup
@@ -139,7 +139,10 @@ Server administrators have access to additional commands:
 
 - **`!admininfo`** - Display all admin commands
 - **`!ping`** - Check if the bot is operational (shows latency)
-- **`!rescan`** - Manually trigger a full rescan of all linked users
+- **`!rescan [max_roles]`** - Manually trigger a full rescan of all linked users
+  - Creates roles for top N games by owner count
+  - Default: Uses `MAX_ROLES` from settings (default: 10)
+  - Example: `!rescan 15` (create roles for top 15 games)
 - **`!topgames [limit]`** - Show the top N most common games by number of owners
   - Default limit: 10
   - Example: `!topgames 20`
@@ -163,7 +166,7 @@ Server administrators have access to additional commands:
 2. **Full Scan** (Nightly at 3 AM):
    - Scans all linked Steam accounts
    - Filters games by multiplayer/cooperative, playtime, and ownership
-   - Creates roles for qualifying games
+   - Creates roles for the top N games by owner count (configurable via `MAX_ROLES` setting)
    - Assigns roles to users who own those games
 3. **Daily Scan** (Once per day):
    - Checks for new games in linked libraries
@@ -206,6 +209,8 @@ See `tests/README.md` for more details on the test suite.
 - The bot respects Steam API rate limits
 - Roles are automatically created and assigned, but can be manually edited/deleted
 - The bot tracks which games have roles to avoid duplicates
+- **Full scans limit role creation**: `!rescan [N]` and nightly scans only create roles for the top N games by owner count to keep servers manageable
+- Daily scans can add roles for new qualifying games as users acquire them
 - Use `!topgames` to see which games are most popular among your server members
 - Blacklisted games will not have roles created even if they meet all criteria
 
